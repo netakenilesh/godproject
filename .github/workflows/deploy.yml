@@ -27,7 +27,7 @@ jobs:
       run: |
         # Create a clean copy without unnecessary files
         mkdir -p /tmp/deployment
-        cp -r backend frontend docker-compose.prod.yml nginx.conf /tmp/deployment/
+        cp -r backend frontend docker-compose.prod.yml .env.production nginx.conf /tmp/deployment/
         
         # Create tar archive
         tar -czf /tmp/deployment.tar.gz -C /tmp/deployment .
