@@ -1,4 +1,4 @@
-name: 🚀 Simple Deploy
+name: 🚀 Deploy to EC2 (Initial Setup)
 
 on: workflow_dispatch
 
@@ -10,21 +10,48 @@ jobs:
     - name: 🛎️ Checkout code
       uses: actions/checkout@v3
 
-    - name: 🔐 Deploy using SCP and SSH
+    - name: 🔐 Setup SSH
       run: |
         mkdir -p ~/.ssh
         echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/key.pem
         chmod 600 ~/.ssh/key.pem
-        
-        # Copy files to EC2
-        scp -i ~/.ssh/key.pem -r . ubuntu@${{ secrets.EC2_HOST }}:/tmp/app-source/
-        
-        # Run deployment commands on EC2
-        ssh -i ~/.ssh/key.pem ubuntu@${{ secrets.EC2_HOST }} "
-          sudo rm -rf /opt/app
-          sudo mv /tmp/app-source /opt/app
-          sudo chown -R ubuntu:ubuntu /opt/app
+
+    - name: 🚀 Initial EC2 setup
+      run: |
+        ssh -i ~/.ssh/key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+          set -e
+          echo "🚀 Starting initial setup..."
+          
+          # Check if /opt/app exists and is a git repo
+          if [ ! -d "/opt/app" ]; then
+            echo "📁 Creating /opt/app directory"
+            sudo mkdir -p /opt/app
+            sudo chown ubuntu:ubuntu /opt/app
+          fi
+          
           cd /opt/app
-          sudo docker-compose -f docker-compose.prod.yml down
+          
+          # Initialize git if not already a repository
+          if [ ! -d ".git" ]; then
+            echo "📦 Initializing git repository"
+            git init
+            git remote add origin https://github.com/yourusername/your-repo.git
+          fi
+          
+          # Pull the latest code
+          echo "📥 Pulling latest code"
+          git fetch origin
+          git reset --hard origin/main
+          
+          # Start services
+          echo "🐳 Starting Docker services"
           sudo docker-compose -f docker-compose.prod.yml up --build -d
-        "
+          
+          sleep 30
+          
+          # Run database migrations
+          echo "🗃️ Running database migrations"
+          sudo docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
+          
+          echo "✅ Initial setup completed!"
+        EOF
