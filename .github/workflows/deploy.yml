@@ -1,9 +1,6 @@
-name: 🚀 Deploy to EC2
+name: 🚀 Simple Deploy
 
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
+on: workflow_dispatch
 
 jobs:
   deploy:
@@ -13,23 +10,21 @@ jobs:
     - name: 🛎️ Checkout code
       uses: actions/checkout@v3
 
-    - name: 🔐 Setup SSH environment
+    - name: 🔐 Deploy using SCP and SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
-        chmod 600 ~/.ssh/ec2_key.pem
-        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
-    - name: 🚀 Deploy application
-      run: |
-        ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=no ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
-          set -e
-          echo "🚀 Starting deployment..."
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/key.pem
+        chmod 600 ~/.ssh/key.pem
+        
+        # Copy files to EC2
+        scp -i ~/.ssh/key.pem -r . ubuntu@${{ secrets.EC2_HOST }}:/tmp/app-source/
+        
+        # Run deployment commands on EC2
+        ssh -i ~/.ssh/key.pem ubuntu@${{ secrets.EC2_HOST }} "
+          sudo rm -rf /opt/app
+          sudo mv /tmp/app-source /opt/app
+          sudo chown -R ubuntu:ubuntu /opt/app
           cd /opt/app
-          sudo git pull origin main
           sudo docker-compose -f docker-compose.prod.yml down
           sudo docker-compose -f docker-compose.prod.yml up --build -d
-          sleep 30
-          sudo docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
-          echo "✅ Deployment completed successfully!"
-        EOF
+        "
