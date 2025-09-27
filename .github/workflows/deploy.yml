@@ -1,6 +1,9 @@
 name: Deploy to AWS EC2
 
 on:
+  # This enables manual triggering
+  workflow_dispatch:
+  # Also trigger on pushes to main
   push:
     branches: [ main ]
 
@@ -21,7 +24,5 @@ jobs:
         script: |
           cd /opt/app
           git pull origin main
-          docker-compose -f docker-compose.prod.yml down
-          docker-compose -f docker-compose.prod.yml up --build -d
-          sleep 30
-          docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
+          docker-compose down
+          docker-compose up --build -d
