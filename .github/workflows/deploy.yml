@@ -1,6 +1,9 @@
-name: 🚀 Deploy to EC2 (Initial Setup)
+name: 🚀 Deploy to EC2
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   deploy:
@@ -10,48 +13,30 @@ jobs:
     - name: 🛎️ Checkout code
       uses: actions/checkout@v3
 
-    - name: 🔐 Setup SSH
+    - name: 🔐 Setup SSH with host verification
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/key.pem
-        chmod 600 ~/.ssh/key.pem
+        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+        chmod 600 ~/.ssh/ec2_key.pem
+        
+        # Add EC2 host to known_hosts
+        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        echo "✅ Host key added to known_hosts"
 
-    - name: 🚀 Initial EC2 setup
+    - name: 🚀 Test connection
       run: |
-        ssh -i ~/.ssh/key.pem ubuntu@${{ secrets.EC2_HOST }} << 'EOF'
+        ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=yes ubuntu@${{ secrets.EC2_HOST }} "echo '✅ SSH connection successful!'"
+
+    - name: 🎯 Deploy application
+      run: |
+        ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=yes -t ubuntu@${{ secrets.EC2_HOST }} "
           set -e
-          echo "🚀 Starting initial setup..."
-          
-          # Check if /opt/app exists and is a git repo
-          if [ ! -d "/opt/app" ]; then
-            echo "📁 Creating /opt/app directory"
-            sudo mkdir -p /opt/app
-            sudo chown ubuntu:ubuntu /opt/app
-          fi
-          
+          echo '🚀 Starting deployment...'
           cd /opt/app
-          
-          # Initialize git if not already a repository
-          if [ ! -d ".git" ]; then
-            echo "📦 Initializing git repository"
-            git init
-            git remote add origin https://github.com/yourusername/your-repo.git
-          fi
-          
-          # Pull the latest code
-          echo "📥 Pulling latest code"
-          git fetch origin
-          git reset --hard origin/main
-          
-          # Start services
-          echo "🐳 Starting Docker services"
+          sudo git pull origin main
+          sudo docker-compose -f docker-compose.prod.yml down
           sudo docker-compose -f docker-compose.prod.yml up --build -d
-          
           sleep 30
-          
-          # Run database migrations
-          echo "🗃️ Running database migrations"
           sudo docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
-          
-          echo "✅ Initial setup completed!"
-        EOF
+          echo '✅ Deployment completed!'
+        "
