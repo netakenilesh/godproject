@@ -1,9 +1,12 @@
-name: 🚀 Deploy to EC2
+name: 🚀 Deploy to EC2 (Complete)
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
+
+env:
+  REPO_URL: https://github.com/netakenilesh/godproject.git
 
 jobs:
   deploy:
@@ -20,9 +23,56 @@ jobs:
         chmod 600 ~/.ssh/ec2_key.pem
         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-    - name: 🚀 Deploy with pseudo-terminal
+    - name: 📤 Prepare and transfer files
       run: |
-        ssh -i ~/.ssh/ec2_key.pem -o StrictHostKeyChecking=yes -t -t ubuntu@${{ secrets.EC2_HOST }} "
+        # Create a clean copy without unnecessary files
+        mkdir -p /tmp/deployment
+        cp -r backend frontend docker-compose.prod.yml nginx.conf /tmp/deployment/
+        
+        # Create tar archive
+        tar -czf /tmp/deployment.tar.gz -C /tmp/deployment .
+
+        # Transfer to EC2
+        scp -i ~/.ssh/ec2_key.pem /tmp/deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+
+    - name: 🚀 Setup and deploy on EC2
+      run: |
+        ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
+          set -e
+          echo '🎯 Setting up application...'
+          
+          # Setup directory
+          sudo mkdir -p /opt/app
+          sudo chown ubuntu:ubuntu /opt/app
           cd /opt/app
+          
+          # Extract files
+          tar -xzf /tmp/deployment.tar.gz
+          ls -la
+          
+          # Ensure environment file
+          if [ ! -f .env.production ]; then
+            echo '❌ .env.production missing - create it manually first'
+            exit 1
+          fi
+          
+          echo '🏗️ Building and starting services...'
+          sudo docker-compose -f docker-compose.prod.yml down || true
           sudo docker-compose -f docker-compose.prod.yml up --build -d
+          
+          echo '⏳ Waiting for services to start...'
+          sleep 30
+          
+          echo '🗃️ Running database migrations...'
+          sudo docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
+          
+          echo '✅ Deployment successful!'
+        "
+
+    - name: 🧪 Verify deployment
+      run: |
+        ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
+          echo '🧪 Running verification checks...'
+          curl -f http://localhost/api/health && echo '✅ Backend health check passed'
+          curl -f http://localhost && echo '✅ Frontend is serving'
         "
