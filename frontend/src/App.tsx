@@ -37,7 +37,7 @@ function App() {
 
     setLoading(true);
     try {
-      await axios.post(`${API_URL}/api/users`, { email, name });
+      await axios.post(`${API_URL}/users`, { email, name });
       setEmail("");
       setName("");
       await fetchUsers();
