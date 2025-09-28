@@ -28,16 +28,26 @@ jobs:
           chmod 600 ~/.ssh/ec2_key.pem
           ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: 📤 Transfer files to EC2
+      - name: 📤 Prepare and transfer files
         run: |
-          # Create deployment package with all necessary files
-          tar -czf deployment.tar.gz \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='*.log' \
-            .
-          scp -i ~/.ssh/ec2_key.pem deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
-          echo "✅ Files transferred to EC2"
+          # Create a clean copy without live operations
+          mkdir -p /tmp/deployment
+          echo "📂 Copying files to temporary directory..."
+          cp -r backend frontend docker-compose.prod.yml nginx.conf /tmp/deployment/
+          
+          # Copy .env.production if it exists, otherwise skip
+          cp .env.production /tmp/deployment/ 2>/dev/null || echo "ℹ️ .env.production not found, will need to create manually"
+          
+          echo "📦 Creating archive from clean copy..."
+          cd /tmp/deployment
+          tar -czf /tmp/deployment.tar.gz .
+          
+          echo "📁 Archive contents:"
+          tar -tzf /tmp/deployment.tar.gz | head -20
+          
+          echo "🚀 Transferring to EC2..."
+          scp -i ~/.ssh/ec2_key.pem /tmp/deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+          echo "✅ Files transferred successfully"
 
       - name: 🚀 Deploy application
         run: |
@@ -59,15 +69,21 @@ jobs:
             echo '🔍 Verifying files...'
             if [ ! -f .env.production ]; then
               echo '❌ .env.production missing - please create it manually'
+              echo 'You can create it with: sudo nano /opt/app/.env.production'
               exit 1
             fi
             
-            if [ ! -d 'frontend/dist' ]; then
-              echo '❌ frontend/dist missing - building on EC2...'
+            echo '📁 Frontend dist contents:'
+            ls -la frontend/dist/ || echo '⚠️ frontend/dist not found, will build on EC2'
+            
+            # Build React app on EC2 if needed
+            if [ ! -d 'frontend/dist' ] || [ -z \"\$(ls -A frontend/dist)\" ]; then
+              echo '🏗️ Building React app on EC2...'
               cd frontend
               npm install
               npm run build
               cd ..
+              echo '✅ React app built on EC2'
             fi
             
             echo '🐳 Starting Docker services...'
@@ -87,20 +103,10 @@ jobs:
         run: |
           ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
             echo '🧪 Running verification checks...'
-            
-            # Check if containers are running
             echo '📋 Container status:'
             sudo docker-compose ps
-            
-            # Test backend
             echo '🔧 Testing backend...'
-            curl -f http://localhost:4000/api/health && echo '✅ Backend is healthy' || echo '❌ Backend not responding'
-            
-            # Test frontend through nginx
+            curl -f http://localhost:4000/api/health && echo '✅ Backend is healthy'
             echo '🌐 Testing frontend...'
-            curl -f http://localhost:8080/ && echo '✅ Frontend is serving' || echo '❌ Frontend not serving'
-            
-            # Check nginx logs
-            echo '📋 Nginx logs (last 10 lines):'
-            sudo docker-compose logs nginx --tail=10
+            curl -f http://localhost:8080/ && echo '✅ Frontend is serving'
           "
