@@ -72,7 +72,7 @@ jobs:
 
           echo "🏗️ Building and starting services..."
           sudo docker compose -f docker-compose.prod.yml down || true
-          sudo docker compose -f docker-compose.prod.yml up --build -d
+          sudo docker compose -f docker-compose.prod.yml up --build -d --no-cache
 
           echo "⏳ Waiting for services to start..."
           sleep 30
