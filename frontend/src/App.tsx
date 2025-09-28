@@ -22,7 +22,7 @@ function App() {
 
   const fetchUsers = async (): Promise<void> => {
     try {
-      const response = (await axios.get(`${API_URL}/api/users`)) as any;
+      const response = (await axios.get(`${API_URL}/users`)) as any;
       setUsers(response.data);
     } catch (error) {
       console.error("Error fetching users:", error);
