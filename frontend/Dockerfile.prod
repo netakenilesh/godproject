@@ -1,16 +1,19 @@
 # Multi-stage build for frontend
 FROM node:20-alpine AS builder
 
-WORKDIR /app
+WORKDIR /app/frontend
+
+# Install build dependencies if needed
+RUN apk add --no-cache python3 make g++
 
 # Copy package files
-COPY package*.json ./
+COPY frontend/package*.json ./
 
 # Install dependencies
 RUN npm install
 
-# Copy source code
-COPY . .
+# Copy frontend source code
+COPY frontend/ ./
 
 # Build the application
 RUN npm run build
