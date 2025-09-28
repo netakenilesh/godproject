@@ -10,9 +10,11 @@ COPY tsconfig.node.json ./
 COPY vite.config.ts ./
 
 # Install dependencies including TypeScript compiler
-RUN npm install
 RUN npm install -g typescript
 RUN npm i --save-dev @types/react
+
+RUN npm install
+
 
 # Install dependencies
 RUN npm ci --only=production
