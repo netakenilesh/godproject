@@ -18,23 +18,35 @@ jobs:
 
     - name: 🔐 Setup SSH
       run: |
+        set -x
         mkdir -p ~/.ssh
         echo "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/ec2_key.pem
         chmod 600 ~/.ssh/ec2_key.pem
-        ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+        ssh-keyscan -v -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
     - name: 📤 Prepare and transfer files
       run: |
-        # Create a clean copy without unnecessary files
+        set -x
         mkdir -p /tmp/deployment
-        cp -r backend frontend docker-compose.prod.yml .env.production nginx.conf /tmp/deployment/
+        cp -r backend frontend docker-compose.prod.yml .env.production nginx.conf /tmp/deployment/ || true
         
-        # Create tar archive
         tar -czf /tmp/deployment.tar.gz -C /tmp/deployment .
-
-        # Transfer to EC2
-        scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem /tmp/deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+        
+        scp -v -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem /tmp/deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
 
     - name: 🚀 Setup and deploy on EC2
       run: |
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ubuntu@$_
+        set -x
+        ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
+          set -e
+          echo '🎯 Connected to EC2 ✅'
+          hostname
+          whoami
+          
+          # Ensure Docker is installed
+          if ! command -v docker &> /dev/null; then
+            echo '🐳 Installing Docker...'
+            sudo apt-get update -y
+            sudo apt-get install -y ca-certificates curl gnupg lsb-release
+            sudo mkdir -p /etc/apt/keyrings
+            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg
