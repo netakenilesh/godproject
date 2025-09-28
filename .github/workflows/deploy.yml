@@ -1,112 +1,22 @@
-name: 🚀 Deploy to EC2
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [ main ]
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 🛎️ Checkout code
-        uses: actions/checkout@v3
-
-      - name: 🏗️ Build React App
-        run: |
-          cd frontend
-          npm install
-          npm run build
-          echo "✅ React app built"
-          ls -la dist/
-
-      - name: 🔐 Setup SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
-          chmod 600 ~/.ssh/ec2_key.pem
-          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
-
       - name: 📤 Prepare and transfer files
         run: |
-          # Create a clean copy without live operations
+          # Create a clean copy and fix permissions
           mkdir -p /tmp/deployment
           echo "📂 Copying files to temporary directory..."
           cp -r backend frontend docker-compose.prod.yml nginx.conf /tmp/deployment/
           
-          # Copy .env.production if it exists, otherwise skip
+          # Copy .env.production if it exists
           cp .env.production /tmp/deployment/ 2>/dev/null || echo "ℹ️ .env.production not found, will need to create manually"
           
-          echo "📦 Creating archive from clean copy..."
+          # Fix permissions in the temporary directory
+          echo "🔧 Fixing file permissions..."
+          chmod -R 755 /tmp/deployment/
+          chown -R $(id -u):$(id -g) /tmp/deployment/ || true
+          
+          echo "📦 Creating archive..."
           cd /tmp/deployment
           tar -czf /tmp/deployment.tar.gz .
-          
-          echo "📁 Archive contents:"
-          tar -tzf /tmp/deployment.tar.gz | head -20
           
           echo "🚀 Transferring to EC2..."
           scp -i ~/.ssh/ec2_key.pem /tmp/deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
           echo "✅ Files transferred successfully"
-
-      - name: 🚀 Deploy application
-        run: |
-          ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
-            set -e
-            echo '🚀 Starting deployment...'
-            
-            # Create app directory
-            sudo mkdir -p /opt/app
-            sudo chown ubuntu:ubuntu /opt/app
-            cd /opt/app
-            
-            # Extract files
-            echo '📦 Extracting deployment files...'
-            tar -xzf /tmp/deployment.tar.gz
-            ls -la
-            
-            # Verify critical files exist
-            echo '🔍 Verifying files...'
-            if [ ! -f .env.production ]; then
-              echo '❌ .env.production missing - please create it manually'
-              echo 'You can create it with: sudo nano /opt/app/.env.production'
-              exit 1
-            fi
-            
-            echo '📁 Frontend dist contents:'
-            ls -la frontend/dist/ || echo '⚠️ frontend/dist not found, will build on EC2'
-            
-            # Build React app on EC2 if needed
-            if [ ! -d 'frontend/dist' ] || [ -z \"\$(ls -A frontend/dist)\" ]; then
-              echo '🏗️ Building React app on EC2...'
-              cd frontend
-              npm install
-              npm run build
-              cd ..
-              echo '✅ React app built on EC2'
-            fi
-            
-            echo '🐳 Starting Docker services...'
-            sudo docker-compose -f docker-compose.prod.yml down || true
-            sudo docker-compose -f docker-compose.prod.yml up --build -d
-            
-            echo '⏳ Waiting for services to start...'
-            sleep 30
-            
-            echo '🗃️ Running database migrations...'
-            sudo docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
-            
-            echo '✅ Deployment successful!'
-          "
-
-      - name: 🧪 Verify deployment
-        run: |
-          ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
-            echo '🧪 Running verification checks...'
-            echo '📋 Container status:'
-            sudo docker-compose ps
-            echo '🔧 Testing backend...'
-            curl -f http://localhost:4000/api/health && echo '✅ Backend is healthy'
-            echo '🌐 Testing frontend...'
-            curl -f http://localhost:8080/ && echo '✅ Frontend is serving'
-          "
