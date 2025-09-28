@@ -44,14 +44,12 @@ jobs:
             # Extract source code
             echo 'Extracting source code...'
             tar -xzf /tmp/source.tar.gz
-            ls -la
             
-            # Install Node.js if needed
-            if ! command -v node &> /dev/null; then
-              echo 'Installing Node.js...'
-              curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
-              sudo apt-get install -y nodejs
-            fi
+            # Fix permissions BEFORE building
+            echo 'Setting proper permissions...'
+            sudo chown -R ubuntu:ubuntu /opt/app
+            sudo chmod -R 755 /opt/app
+            sudo chmod -R 777 /opt/app/frontend 2>/dev/null || true
             
             # Build React app on EC2
             echo 'Building React app on EC2...'
@@ -59,6 +57,11 @@ jobs:
             npm install
             npm run build
             cd ..
+            
+            # Fix permissions after build
+            echo 'Fixing build permissions...'
+            sudo chown -R ubuntu:ubuntu /opt/app/frontend/dist
+            sudo chmod -R 755 /opt/app/frontend/dist
             
             echo 'Build results:'
             ls -la frontend/dist/
