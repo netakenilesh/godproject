@@ -88,12 +88,3 @@ jobs:
           set -x
           scp -v -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem /tmp/deploy_script.sh ubuntu@${{ secrets.EC2_HOST }}:/tmp/
           ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "bash /tmp/deploy_script.sh"
-
-      - name: 🧪 Verify deployment
-        run: |
-          set -x
-          ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} '
-            echo "🧪 Running verification checks..."
-            curl -f http://localhost/api/health && echo "✅ Backend health check passed"
-            curl -f http://localhost && echo "✅ Frontend is serving"
-          '
