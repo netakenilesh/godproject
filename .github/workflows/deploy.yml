@@ -1,12 +1,9 @@
-name: 🚀 Deploy to EC2 (Git-Based)
+name: 🚀 Deploy to EC2
 
 on:
   workflow_dispatch:
   push:
     branches: [ main ]
-
-env:
-  REPO_URL: https://github.com/netakenilesh/godproject.git
 
 jobs:
   deploy:
@@ -15,70 +12,95 @@ jobs:
     steps:
       - name: 🛎️ Checkout code
         uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🏗️ Build React App
+        run: |
+          cd frontend
+          npm install
+          npm run build
+          echo "✅ React app built"
+          ls -la dist/
 
       - name: 🔐 Setup SSH
         run: |
-          set -x
           mkdir -p ~/.ssh
-          printf "%s\n" "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
           chmod 600 ~/.ssh/ec2_key.pem
-          ssh-keyscan -v -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
-      - name: 🚀 Deploy using Git on EC2
+      - name: 📤 Transfer files to EC2
         run: |
-          set -x
-          ssh -v -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} '
+          # Create deployment package with all necessary files
+          tar -czf deployment.tar.gz \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='*.log' \
+            .
+          scp -i ~/.ssh/ec2_key.pem deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+          echo "✅ Files transferred to EC2"
+
+      - name: 🚀 Deploy application
+        run: |
+          ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
             set -e
-            echo "🎯 Starting Git-based deployment..."
-
-            # Ensure Docker is installed
-            if ! command -v docker &> /dev/null; then
-              echo "🐳 Installing Docker..."
-              sudo apt-get update -y
-              sudo apt-get install -y docker.io docker-compose
-            fi
-
-            # Ensure Git is installed
-            if ! command -v git &> /dev/null; then
-              echo "📦 Installing Git..."
-              sudo apt-get update -y
-              sudo apt-get install -y git
-            fi
-
-            echo "📦 Setting up application directory..."
+            echo '🚀 Starting deployment...'
+            
+            # Create app directory
             sudo mkdir -p /opt/app
             sudo chown ubuntu:ubuntu /opt/app
             cd /opt/app
-
-            # Clone or pull the repository
-            if [ -d ".git" ]; then
-              echo "🔄 Pulling latest changes..."
-              git pull origin main
-            else
-              echo "📥 Cloning repository..."
-              git clone ${{ env.REPO_URL }} .
-            fi
-
-            echo "🔍 Verifying files..."
+            
+            # Extract files
+            echo '📦 Extracting deployment files...'
+            tar -xzf /tmp/deployment.tar.gz
             ls -la
-            ls -la frontend/ || echo "Frontend directory not found"
-
+            
+            # Verify critical files exist
+            echo '🔍 Verifying files...'
             if [ ! -f .env.production ]; then
-              echo "❌ .env.production missing - create it manually first"
+              echo '❌ .env.production missing - please create it manually'
               exit 1
             fi
-
-            echo "🏗️ Building and starting services..."
+            
+            if [ ! -d 'frontend/dist' ]; then
+              echo '❌ frontend/dist missing - building on EC2...'
+              cd frontend
+              npm install
+              npm run build
+              cd ..
+            fi
+            
+            echo '🐳 Starting Docker services...'
             sudo docker-compose -f docker-compose.prod.yml down || true
             sudo docker-compose -f docker-compose.prod.yml up --build -d
-
-            echo "⏳ Waiting for services to start..."
+            
+            echo '⏳ Waiting for services to start...'
             sleep 30
-
-            echo "🗃️ Running database migrations..."
+            
+            echo '🗃️ Running database migrations...'
             sudo docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
+            
+            echo '✅ Deployment successful!'
+          "
 
-            echo "✅ Deployment successful!"
-          '
+      - name: 🧪 Verify deployment
+        run: |
+          ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
+            echo '🧪 Running verification checks...'
+            
+            # Check if containers are running
+            echo '📋 Container status:'
+            sudo docker-compose ps
+            
+            # Test backend
+            echo '🔧 Testing backend...'
+            curl -f http://localhost:4000/api/health && echo '✅ Backend is healthy' || echo '❌ Backend not responding'
+            
+            # Test frontend through nginx
+            echo '🌐 Testing frontend...'
+            curl -f http://localhost:8080/ && echo '✅ Frontend is serving' || echo '❌ Frontend not serving'
+            
+            # Check nginx logs
+            echo '📋 Nginx logs (last 10 lines):'
+            sudo docker-compose logs nginx --tail=10
+          "
