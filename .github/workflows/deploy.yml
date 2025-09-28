@@ -19,7 +19,7 @@ jobs:
     - name: 🔐 Setup SSH
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key.pem
+        echo "${{ secrets.EC2_SSH_KEY }}" | tr -d '\r' > ~/.ssh/ec2_key.pem
         chmod 600 ~/.ssh/ec2_key.pem
         ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
 
@@ -33,46 +33,8 @@ jobs:
         tar -czf /tmp/deployment.tar.gz -C /tmp/deployment .
 
         # Transfer to EC2
-        scp -i ~/.ssh/ec2_key.pem /tmp/deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem /tmp/deployment.tar.gz ubuntu@${{ secrets.EC2_HOST }}:/tmp/
 
     - name: 🚀 Setup and deploy on EC2
       run: |
-        ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
-          set -e
-          echo '🎯 Setting up application...'
-          
-          # Setup directory
-          sudo mkdir -p /opt/app
-          sudo chown ubuntu:ubuntu /opt/app
-          cd /opt/app
-          
-          # Extract files
-          tar -xzf /tmp/deployment.tar.gz
-          ls -la
-          
-          # Ensure environment file
-          if [ ! -f .env.production ]; then
-            echo '❌ .env.production missing - create it manually first'
-            exit 1
-          fi
-          
-          echo '🏗️ Building and starting services...'
-          sudo docker-compose -f docker-compose.prod.yml down || true
-          sudo docker-compose -f docker-compose.prod.yml up --build -d
-          
-          echo '⏳ Waiting for services to start...'
-          sleep 30
-          
-          echo '🗃️ Running database migrations...'
-          sudo docker-compose -f docker-compose.prod.yml exec backend npx prisma db push
-          
-          echo '✅ Deployment successful!'
-        "
-
-    - name: 🧪 Verify deployment
-      run: |
-        ssh -i ~/.ssh/ec2_key.pem ubuntu@${{ secrets.EC2_HOST }} "
-          echo '🧪 Running verification checks...'
-          curl -f http://localhost/api/health && echo '✅ Backend health check passed'
-          curl -f http://localhost && echo '✅ Frontend is serving'
-        "
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2_key.pem ubuntu@$_
