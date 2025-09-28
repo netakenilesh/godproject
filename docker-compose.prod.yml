@@ -17,16 +17,6 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-    environment:
-      NODE_ENV: production
-    # The frontend doesn’t need exposed ports in production
-    volumes:
-      - ./frontend/dist:/app/frontend/dist
-    restart: unless-stopped
 
   nginx:
     image: nginx:alpine
