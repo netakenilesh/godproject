@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-const API_URL = "http://localhost:4000";
+const API_URL = "http://ec2-51-21-192-183.eu-north-1.compute.amazonaws.com/api";
 
 interface User {
   id: string;
